@@ -1,8 +1,10 @@
 import os
 import torch
 import numpy as np
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Adam
+from torch.distributions import Normal
 from utils import soft_update, hard_update
 from model import GaussianPolicy, QNetwork, DeterministicPolicy
 
@@ -24,6 +26,11 @@ class SAC(object):
         self.critic_optim = Adam(self.critic.parameters(), lr=args.lr)
 
         self.critic_target = QNetwork(num_inputs, action_space.shape[0], args.hidden_size).to(self.device)
+
+        ####
+        self.predictive_model = PredictiveModel(num_inputs, action_space.shape[0], args.hidden_size).to(self.device)
+        self.predictive_model_optimizer = Adam(self.predictive_model.parameters(), lr=args.lr)
+
         
         hard_update(self.critic_target, self.critic)    # copy directly
 
@@ -102,6 +109,7 @@ class SAC(object):
         if updates % self.target_update_interval == 0:
             soft_update(self.critic_target, self.critic, self.tau)
         
+        #*#
         for idx, skill in enumerate(self.skills):
             predicted_action = self.update_skill(idx, memory, batch_size)  # Here we capture the returned value
             intrinsic_reward = F.mse_loss(predicted_action, action_batch, reduction='none').mean(dim=1, keepdim=True)
@@ -111,46 +119,29 @@ class SAC(object):
         return qf1_loss.item(), qf2_loss.item(), policy_loss.item(), alpha_loss.item(), alpha_tlogs.item()
     
     # 2. Skill Management Methods
-   
-    def remove_skill(self, skill_idx):
-        del self.skills[skill_idx]
-        del self.relevance_scores[skill_idx]
-    
-    def compute_advantage(self, state_batch, action_batch, skill_idx):
-        with torch.no_grad():
-            # Use the action from the skill for next_value computation
-            qf1, qf2 = self.critic(state_batch, action_batch)
-            min_q = torch.min(qf1, qf2)
-            _, _, next_value = self.policy.sample(state_batch)
-        advantage = min_q - next_value
-        return advantage
 
     def update_relevance_score(self, skill_idx, intrinsic_reward):
         self.relevance_scores[skill_idx] += intrinsic_reward.mean().item()
 
-
-    def decay_relevance_scores(self):
-        decay_factor = 0.90  # adjust as needed
-        self.relevance_scores = [score * decay_factor for score in self.relevance_scores]
-
+    
     def update_skill(self, skill_idx, memory, batch_size):
         state_batch, action_batch, _, _, _ = memory.sample(batch_size=batch_size)
-
         state_batch = torch.FloatTensor(state_batch).to(self.device)
         action_batch = torch.FloatTensor(action_batch).to(self.device)
-        
-        # Instead of the current advantage computation, derive some intrinsic reward for the skill. 
-        # For simplicity, here we use prediction error as a reward:
         predicted_action, _, _ = self.skills[skill_idx].sample(state_batch)
-        intrinsic_reward = F.mse_loss(predicted_action, action_batch, reduction='none').mean(dim=1, keepdim=True)
+        prediction_error = F.mse_loss(predicted_action, action_batch, reduction='none').mean(dim=1, keepdim=True)
         
-        # Update the skill as you would in an actor-critic method:
+        # Compute the entropy of the policy
+        policy_entropy = self.skills[skill_idx].get_entropy(state_batch)
+        
+        # Combine prediction error and entropy for intrinsic reward
+        intrinsic_reward = prediction_error  +  0*policy_entropy
+        
+        # Update the skill
         _, log_prob, _ = self.skills[skill_idx].sample(state_batch)
         qf1, qf2 = self.critic(state_batch, predicted_action)
         min_q = torch.min(qf1, qf2)
-        
         skill_loss = (log_prob * (log_prob - min_q + intrinsic_reward)).mean()  # Incorporate intrinsic reward
-
         self.skill_optims[skill_idx].zero_grad()
         skill_loss.backward()
         self.skill_optims[skill_idx].step()
@@ -166,8 +157,8 @@ class SAC(object):
             action, _, _ = skill.sample(state)
         else:
             _, _, action = skill.sample(state)
-        return action.detach().cpu().numpy()[0], skill_idx  # Return skill_idx to use later for relevance update
-
+        return action.detach().cpu().numpy()[0], skill_idx  
+    
     def select_skill(self):
         probs = F.softmax(torch.tensor(self.relevance_scores), dim=0)
         return np.random.choice(len(self.skills), p=probs.numpy())
@@ -192,3 +183,31 @@ class SAC(object):
             self.policy.load_state_dict(torch.load(actor_path))
         if critic_path is not None:
             self.critic.load_state_dict(torch.load(critic_path))
+
+    # Train Predictive Model
+    def train_predictive_model(self, state_batch, action_batch, next_state_batch):
+        # Assume state_batch, action_batch, next_state_batch are tensors
+        predicted_next_state = self.predictive_model(state_batch, action_batch)
+        loss = F.mse_loss(predicted_next_state, next_state_batch)
+        self.predictive_model_optimizer.zero_grad()
+        loss.backward()
+        self.predictive_model_optimizer.step()
+
+class PredictiveModel(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_size):
+        super(PredictiveModel, self).__init__()
+        self.fc1 = nn.Linear(state_dim + action_dim, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.fc3 = nn.Linear(hidden_size, state_dim)  # predicting the next state, so the output is state_dim
+
+    def forward(self, state, action):
+        x = torch.cat([state, action], dim=1)  # Concatenate state and action
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        next_state = self.fc3(x)  # No activation, predicting raw state values
+        return next_state
+
+    def predict(self, state, action):
+        # This function is just a wrapper around the forward pass to provide a clearer interface
+        with torch.no_grad():
+            return self.forward(state, action)
