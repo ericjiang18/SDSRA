@@ -9,7 +9,7 @@ from utils import soft_update, hard_update
 from model import GaussianPolicy, QNetwork, DeterministicPolicy
 
 
-class SAC(object):
+class SDSRA(object):
     def __init__(self, num_inputs, action_space, args):
 
         self.gamma = args.gamma
