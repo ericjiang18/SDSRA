@@ -116,6 +116,13 @@ class GaussianPolicy(nn.Module):
         self.action_scale = self.action_scale.to(device)
         self.action_bias = self.action_bias.to(device)
         return super(GaussianPolicy, self).to(device)
+    
+    def get_entropy(self, state):
+        # Assuming that your policy outputs mean and log_std of a Gaussian distribution
+        mean, log_std = self.forward(state)
+        std = log_std.exp()
+        distribution = torch.distributions.Normal(mean, std)
+        return distribution.entropy()
 
 
 class DeterministicPolicy(nn.Module):
