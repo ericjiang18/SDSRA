@@ -4,7 +4,7 @@ import gym
 import numpy as np
 import itertools
 import torch
-from sac import SAC
+from sdsra import SDSRA
 from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
 import pandas as pd
@@ -164,7 +164,7 @@ for i_episode in range(20000):
 
 d = {'con1': episode_list}
 df = pd.DataFrame(data=d)
-df.to_excel('sac.xlsx')
+df.to_excel('SDSRA.xlsx')
 
 agent.save_model(args.env_name)
 
