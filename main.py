@@ -9,6 +9,9 @@ from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
 import pandas as pd
 
+# Works for: Humanoid-v2, Hopper-v2, HalfCheetah-v2, Ant-v2, Walker2d-v2, Swimmer-v2
+# Works for: Humanoid-v3, Hopper-v3, HalfCheetah-v3, Ant-v3, Walker2d-v3, Swimmer-v3
+
 parser = argparse.ArgumentParser(description="SAC")
 parser.add_argument('--env-name', default="HalfCheetah-v2",
                     help='Mujoco Gym environment (default: Hopper-v2)')
@@ -76,7 +79,7 @@ updates = 0
 episode_list = []
 
 # for i_episode in itertools.count(1):
-for i_episode in range(1000):
+for i_episode in range(20000):
     episode_reward = 0
     episode_steps = 0
     done = False
@@ -89,7 +92,20 @@ for i_episode in range(1000):
             action = agent.select_action(state)  # Sample action from policy
 
         if len(memory) > args.batch_size:
-            # Number of updates per step in environment
+            ###
+            # Sample a batch from the memory
+            state_batch, action_batch, reward_batch, next_state_batch, mask_batch = memory.sample(batch_size=args.batch_size)
+
+            # Convert to tensors
+            state_batch = torch.FloatTensor(state_batch).to(agent.device)
+            action_batch = torch.FloatTensor(action_batch).to(agent.device)
+            next_state_batch = torch.FloatTensor(next_state_batch).to(agent.device)
+
+            # Update the predictive model
+            agent.train_predictive_model(state_batch, action_batch, next_state_batch)
+
+            ###
+            # Perform SAC updates
             for i in range(args.updates_per_step):
                 # Update parameters of all the networks
                 critic_1_loss, critic_2_loss, policy_loss, ent_loss, alpha = agent.update_parameters(memory, args.batch_size, updates)
