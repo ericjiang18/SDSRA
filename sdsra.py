@@ -27,7 +27,6 @@ class SDSRA(object):
 
         self.critic_target = QNetwork(num_inputs, action_space.shape[0], args.hidden_size).to(self.device)
 
-        ####
         self.predictive_model = PredictiveModel(num_inputs, action_space.shape[0], args.hidden_size).to(self.device)
         self.predictive_model_optimizer = Adam(self.predictive_model.parameters(), lr=args.lr)
 
@@ -109,7 +108,6 @@ class SDSRA(object):
         if updates % self.target_update_interval == 0:
             soft_update(self.critic_target, self.critic, self.tau)
         
-        #*#
         for idx, skill in enumerate(self.skills):
             predicted_action = self.update_skill(idx, memory, batch_size)  # Here we capture the returned value
             intrinsic_reward = F.mse_loss(predicted_action, action_batch, reduction='none').mean(dim=1, keepdim=True)
@@ -128,20 +126,25 @@ class SDSRA(object):
         state_batch, action_batch, _, _, _ = memory.sample(batch_size=batch_size)
         state_batch = torch.FloatTensor(state_batch).to(self.device)
         action_batch = torch.FloatTensor(action_batch).to(self.device)
-        predicted_action, _, _ = self.skills[skill_idx].sample(state_batch)
-        prediction_error = F.mse_loss(predicted_action, action_batch, reduction='none').mean(dim=1, keepdim=True)
         
+        predicted_action, _, _ = self.skills[skill_idx].sample(state_batch)
+
+        # Calculate prediction error
+        prediction_error = F.mse_loss(predicted_action, action_batch, reduction='none').mean(dim=1, keepdim=True)
+
         # Compute the entropy of the policy
         policy_entropy = self.skills[skill_idx].get_entropy(state_batch)
         
         # Combine prediction error and entropy for intrinsic reward
-        intrinsic_reward = prediction_error  +  0*policy_entropy
+        intrinsic_reward = prediction_error + 0*policy_entropy
         
-        # Update the skill
+        # Update the skill as you would in an actor-critic method:
         _, log_prob, _ = self.skills[skill_idx].sample(state_batch)
         qf1, qf2 = self.critic(state_batch, predicted_action)
         min_q = torch.min(qf1, qf2)
+        
         skill_loss = (log_prob * (log_prob - min_q + intrinsic_reward)).mean()  # Incorporate intrinsic reward
+
         self.skill_optims[skill_idx].zero_grad()
         skill_loss.backward()
         self.skill_optims[skill_idx].step()
@@ -184,7 +187,7 @@ class SDSRA(object):
         if critic_path is not None:
             self.critic.load_state_dict(torch.load(critic_path))
 
-    # Train Predictive Model
+    ###
     def train_predictive_model(self, state_batch, action_batch, next_state_batch):
         # Assume state_batch, action_batch, next_state_batch are tensors
         predicted_next_state = self.predictive_model(state_batch, action_batch)
