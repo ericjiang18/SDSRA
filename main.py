@@ -9,10 +9,10 @@ from torch.utils.tensorboard import SummaryWriter
 from replay_memory import ReplayMemory
 import pandas as pd
 
-# Works for: Humanoid-v2, Hopper-v2, HalfCheetah-v2, Ant-v2, Walker2d-v2, Swimmer-v2
-# Works for: Humanoid-v3, Hopper-v3, HalfCheetah-v3, Ant-v3, Walker2d-v3, Swimmer-v3
+# Humanoid-v2, Hopper-v2, HalfCheetah-v2, Ant-v2, Walker2d-v2, Swimmer-v2
+# Humanoid-v3, Hopper-v3, HalfCheetah-v3, Ant-v3, Walker2d-v3, Swimmer-v3
 
-parser = argparse.ArgumentParser(description="SAC")
+parser = argparse.ArgumentParser(description="SDSRA")
 parser.add_argument('--env-name', default="HalfCheetah-v2",
                     help='Mujoco Gym environment (default: Hopper-v2)')
 parser.add_argument('--policy', default="Gaussian",
@@ -63,7 +63,7 @@ torch.manual_seed(args.seed)
 np.random.seed(args.seed)    # the st seed, the same number of seed, the random is same
 
 # Agent
-agent = SAC(env.observation_space.shape[0], env.action_space, args)
+agent = SDSRA(env.observation_space.shape[0], env.action_space, args)
 
 #Tesnorboard "{}" inside is the value behind
 writer = SummaryWriter('runs/{}_SAC_{}_{}_{}'.format(datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S"), args.env_name,
@@ -164,7 +164,7 @@ for i_episode in range(20000):
 
 d = {'con1': episode_list}
 df = pd.DataFrame(data=d)
-df.to_excel('SDSRA.xlsx')
+df.to_excel('sdsra.xlsx')
 
 agent.save_model(args.env_name)
 
