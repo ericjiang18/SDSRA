@@ -79,7 +79,7 @@ updates = 0
 episode_list = []
 
 # for i_episode in itertools.count(1):
-for i_episode in range(20000):
+for i_episode in range(1000000):
     episode_reward = 0
     episode_steps = 0
     done = False
