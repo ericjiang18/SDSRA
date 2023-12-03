@@ -12,7 +12,8 @@ import torch.multiprocessing as mp
 from itertools import count
 import argparse
 import datetime
-from sac import SAC
+from sdsra import SDSRA
+from sdsra import PredictiveModel
 from replay_memory import ReplayMemory
 import time
 
@@ -58,7 +59,7 @@ args = parser.parse_args()
 
 
 env = gym.make(args.env_name)
-agent = SAC(env.observation_space.shape[0], env.action_space, args)
+agent = SDSRA(env.observation_space.shape[0], env.action_space, args)
 
 agent.load_model('models/sac_actor_HalfCheetah-v2_', 'models/sac_critic_HalfCheetah-v2_')
 
@@ -96,4 +97,3 @@ plt.xlabel('Eps')
 plt.ylabel('Score')
 plt.title('HalfCheetah-v2 Test Score')
 plt.savefig('TestSAC')
-
